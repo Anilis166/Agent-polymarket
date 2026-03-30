@@ -599,12 +599,13 @@ def _analyze_direction(symbol: str) -> Optional[str]:
     """
     Analisa teknikal 1-menit untuk menentukan arah prediksi 5 menit ke depan.
 
-    Indikator:
+    Indikator (4 votes):
       - RSI(14): < 38 → oversold → UP, > 62 → overbought → DOWN
       - EMA(5) vs EMA(13): crossover arah trend
       - Momentum: net move 3 candle terakhir
+      - Beat price: current price vs harga di epoch_start (arah market aktual)
 
-    Butuh minimal 2 dari 3 sinyal sepakat buat valid.
+    Butuh minimal 3 dari 4 sinyal sepakat buat valid.
     Return: "LONG" / "SHORT" / None (kalau konflik atau data kurang)
     """
     klines = _get_klines_1m(symbol, limit=20)
@@ -645,12 +646,30 @@ def _analyze_direction(symbol: str) -> Optional[str]:
     elif momentum < -0.0003:   # turun > 0.03%
         votes_down += 1
 
-    log.info(f"{symbol}: RSI={rsi:.1f} EMA5={ema5:.4f} EMA13={ema13:.4f} "
-             f"mom={momentum*100:.3f}% → UP={votes_up} DOWN={votes_down}")
+    # Beat price vote: bandingkan current price vs harga di awal epoch
+    # epoch_start candle = candle ke-(secs_elapsed//60 + 1) dari sekarang
+    try:
+        epoch_start = (int(time.time()) // 300) * 300
+        secs_elapsed = int(time.time()) - epoch_start
+        candles_ago = min((secs_elapsed // 60) + 1, len(klines) - 1)
+        beat_price = float(klines[-candles_ago][1])   # open price candle di epoch_start
+        current_price = closes[-1]
+        delta_pct = (current_price - beat_price) / beat_price if beat_price > 0 else 0
+        if delta_pct > 0.0001:      # current > beat → leading UP
+            votes_up += 1
+        elif delta_pct < -0.0001:   # current < beat → leading DOWN
+            votes_down += 1
+        log.info(f"{symbol}: beat={beat_price:.4f} now={current_price:.4f} "
+                 f"delta={delta_pct*100:.3f}% → beat_vote={'UP' if delta_pct>0.0001 else 'DOWN' if delta_pct<-0.0001 else 'FLAT'}")
+    except Exception:
+        pass  # skip beat price vote kalau data kurang
 
-    if votes_up >= 2 and votes_up > votes_down:
+    log.info(f"{symbol}: RSI={rsi:.1f} EMA5={ema5:.4f} EMA13={ema13:.4f} "
+             f"mom={momentum*100:.3f}% → UP={votes_up} DOWN={votes_down} /4")
+
+    if votes_up >= 3 and votes_up > votes_down:
         return "LONG"
-    elif votes_down >= 2 and votes_down > votes_up:
+    elif votes_down >= 3 and votes_down > votes_up:
         return "SHORT"
     return None   # sinyal konflik atau lemah
 
