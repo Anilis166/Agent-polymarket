@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>POLYMARKET BOT</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
+
+  :root {
+    --bg:      #0d0d0d;
+    --card:    #111111;
+    --border:  #1e1e1e;
+    --cyan:    #00e5ff;
+    --cyan-dim:#004d5a;
+    --green:   #00ff88;
+    --red:     #ff3355;
+    --muted:   #444;
+    --text:    #ccc;
+    --bright:  #eee;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* scanline overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* ── HEADER ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: #0a0a0a;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    font-family: 'Orbitron', monospace;
+    font-weight: 900;
+    font-size: 15px;
+    letter-spacing: 4px;
+    color: var(--cyan);
+    text-shadow: 0 0 20px rgba(0,229,255,0.4);
+  }
+
+  .logo span { color: #fff; }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .status-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    letter-spacing: 2px;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: pulse 2s infinite;
+  }
+
+  .status-dot.stopped {
+    background: var(--red);
+    box-shadow: 0 0 8px var(--red);
+    animation: none;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 8px var(--green); }
+    50%       { opacity: 0.5; box-shadow: 0 0 4px var(--green); }
+  }
+
+  .refresh-bar {
+    width: 80px;
+    height: 2px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .refresh-bar-fill {
+    height: 100%;
+    background: var(--cyan);
+    width: 100%;
+    transition: width 1s linear;
+    box-shadow: 0 0 6px var(--cyan);
+  }
+
+  .refresh-label {
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 1px;
+  }
+
+  /* ── MAIN ── */
+  main {
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  /* ── SECTION LABEL ── */
+  .section-label {
+    font-size: 9px;
+    letter-spacing: 3px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  /* ── STAT CARDS ── */
+  .cards-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 14px 16px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--cyan-dim), transparent);
+  }
+
+  .card-label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .card-value {
+    font-family: 'Orbitron', monospace;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--bright);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .card-value.cyan   { color: var(--cyan); text-shadow: 0 0 12px rgba(0,229,255,0.3); }
+  .card-value.green  { color: var(--green); text-shadow: 0 0 12px rgba(0,255,136,0.3); }
+  .card-value.red    { color: var(--red);   text-shadow: 0 0 12px rgba(255,51,85,0.3); }
+  .card-value.small  { font-size: 12px; font-family: 'Share Tech Mono', monospace; }
+
+  /* ── STATS ROW ── */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+
+  .stat-box {
+    background: #0f0f0f;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .stat-key {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  .stat-val {
+    font-family: 'Orbitron', monospace;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--bright);
+  }
+
+  .stat-val.green { color: var(--green); }
+  .stat-val.red   { color: var(--red); }
+  .stat-val.cyan  { color: var(--cyan); }
+
+  /* ── TRADE TABLE ── */
+  .table-wrap {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .table-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    background: #0f0f0f;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  thead th {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    text-align: left;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border);
+    background: #0f0f0f;
+    font-weight: normal;
+  }
+
+  tbody tr {
+    border-bottom: 1px solid #161616;
+    transition: background 0.15s;
+  }
+
+  tbody tr:hover { background: #161616; }
+  tbody tr:last-child { border-bottom: none; }
+
+  tbody td {
+    padding: 9px 16px;
+    font-size: 12px;
+    color: var(--text);
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 2px;
+    font-size: 10px;
+    letter-spacing: 1px;
+    font-weight: 700;
+  }
+
+  .badge.up   { background: rgba(0,255,136,0.12); color: var(--green); border: 1px solid rgba(0,255,136,0.25); }
+  .badge.down { background: rgba(255,51,85,0.12);  color: var(--red);   border: 1px solid rgba(255,51,85,0.25); }
+
+  .pnl-pos { color: var(--green); }
+  .pnl-neg { color: var(--red); }
+
+  .empty-state {
+    text-align: center;
+    padding: 40px;
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 2px;
+  }
+
+  .empty-state .icon { font-size: 24px; margin-bottom: 10px; }
+
+  /* ── EPOCH TIMER ── */
+  .epoch-bar {
+    background: #0f0f0f;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .epoch-label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .epoch-track {
+    flex: 1;
+    height: 3px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .epoch-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--cyan), rgba(0,229,255,0.4));
+    border-radius: 3px;
+    transition: width 1s linear;
+    box-shadow: 0 0 8px rgba(0,229,255,0.4);
+  }
+
+  .epoch-time {
+    font-family: 'Orbitron', monospace;
+    font-size: 12px;
+    color: var(--cyan);
+    white-space: nowrap;
+    min-width: 40px;
+    text-align: right;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">POLY<span>MARKET</span> // BOT</div>
+  <div class="header-right">
+    <div class="refresh-label">REFRESH <span id="countdown">15</span>s</div>
+    <div class="refresh-bar"><div class="refresh-bar-fill" id="refresh-fill"></div></div>
+    <div class="status-badge">
+      <div class="status-dot" id="status-dot"></div>
+      <span id="status-text">—</span>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- Epoch timer -->
+  <div class="epoch-bar">
+    <div class="epoch-label">EPOCH</div>
+    <div class="epoch-track"><div class="epoch-fill" id="epoch-fill" style="width:0%"></div></div>
+    <div class="epoch-time" id="epoch-time">—</div>
+  </div>
+
+  <!-- 4 stat cards -->
+  <div>
+    <div class="section-label">WALLET</div>
+    <div class="cards-row">
+      <div class="card">
+        <div class="card-label">ADDRESS</div>
+        <div class="card-value small" id="wallet">—</div>
+      </div>
+      <div class="card">
+        <div class="card-label">USDC</div>
+        <div class="card-value cyan" id="usdc">$—</div>
+      </div>
+      <div class="card">
+        <div class="card-label">MATIC (GAS)</div>
+        <div class="card-value" id="matic">—</div>
+      </div>
+      <div class="card">
+        <div class="card-label">SESSION P&L</div>
+        <div class="card-value" id="pnl">$—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats row -->
+  <div>
+    <div class="section-label">PERFORMANCE</div>
+    <div class="stats-row">
+      <div class="stat-box">
+        <div class="stat-key">TRADES</div>
+        <div class="stat-val cyan" id="trades">0</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-key">WIN RATE</div>
+        <div class="stat-val" id="winrate">0%</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-key">WINS</div>
+        <div class="stat-val green" id="wins">0</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-key">LOSSES</div>
+        <div class="stat-val red" id="losses">0</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Trade log -->
+  <div>
+    <div class="section-label">TRADE LOG</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>TIME</th>
+            <th>SYMBOL</th>
+            <th>DIRECTION</th>
+            <th>P&L</th>
+            <th>CUMULATIVE</th>
+          </tr>
+        </thead>
+        <tbody id="trade-body">
+          <tr><td colspan="5" class="empty-state">
+            <div class="icon">◌</div>
+            AWAITING FIRST TRADE
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<script>
+const REFRESH_INTERVAL = 15;
+let countdown = REFRESH_INTERVAL;
+let timer;
+
+function fmt(n, decimals = 2) {
+  return Number(n).toFixed(decimals);
+}
+
+function updateEpoch() {
+  const now = Math.floor(Date.now() / 1000);
+  const elapsed = now % 300;
+  const remaining = 300 - elapsed;
+  const pct = (elapsed / 300) * 100;
+  document.getElementById('epoch-fill').style.width = pct + '%';
+  const m = Math.floor(remaining / 60);
+  const s = remaining % 60;
+  document.getElementById('epoch-time').textContent = `${m}:${s.toString().padStart(2,'0')}`;
+}
+
+function renderTrades(trades) {
+  const tbody = document.getElementById('trade-body');
+  if (!trades || trades.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" class="empty-state">
+      <div class="icon">◌</div>AWAITING FIRST TRADE
+    </td></tr>`;
+    return;
+  }
+  tbody.innerHTML = [...trades].reverse().map(t => {
+    const isLong = t.direction === 'LONG';
+    const pnlPos = t.pnl >= 0;
+    const cumPos = t.cum >= 0;
+    return `<tr>
+      <td>${t.ts}</td>
+      <td>${t.symbol}</td>
+      <td><span class="badge ${isLong ? 'up' : 'down'}">${isLong ? '▲ UP' : '▼ DOWN'}</span></td>
+      <td class="${pnlPos ? 'pnl-pos' : 'pnl-neg'}">${pnlPos ? '+' : ''}$${fmt(t.pnl, 4)}</td>
+      <td class="${cumPos ? 'pnl-pos' : 'pnl-neg'}">${cumPos ? '+' : ''}$${fmt(t.cum, 2)}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function fetchStatus() {
+  try {
+    const res = await fetch('/api/status');
+    const d = await res.json();
+
+    // Status
+    const isRunning = d.status === 'RUNNING';
+    document.getElementById('status-text').textContent = d.status;
+    const dot = document.getElementById('status-dot');
+    dot.className = 'status-dot' + (isRunning ? '' : ' stopped');
+
+    // Wallet
+    document.getElementById('wallet').textContent = d.wallet || '—';
+    document.getElementById('usdc').textContent = '$' + fmt(d.usdc);
+    document.getElementById('matic').textContent = fmt(d.matic, 4);
+
+    // PnL
+    const pnl = d.session_pnl || 0;
+    const pnlEl = document.getElementById('pnl');
+    pnlEl.textContent = (pnl >= 0 ? '+$' : '-$') + fmt(Math.abs(pnl));
+    pnlEl.className = 'card-value ' + (pnl >= 0 ? 'green' : 'red');
+
+    // Stats
+    document.getElementById('trades').textContent = d.trades || 0;
+    const wr = d.win_rate || 0;
+    const wrEl = document.getElementById('winrate');
+    wrEl.textContent = fmt(wr, 0) + '%';
+    wrEl.className = 'stat-val ' + (wr >= 50 ? 'green' : wr > 0 ? '' : '');
+    document.getElementById('wins').textContent = d.wins || 0;
+    document.getElementById('losses').textContent = d.losses || 0;
+
+    // Trades
+    renderTrades(d.trade_log || []);
+
+  } catch(e) {
+    document.getElementById('status-text').textContent = 'OFFLINE';
+    document.getElementById('status-dot').className = 'status-dot stopped';
+  }
+}
+
+function startRefreshBar() {
+  clearInterval(timer);
+  countdown = REFRESH_INTERVAL;
+  document.getElementById('countdown').textContent = countdown;
+  document.getElementById('refresh-fill').style.width = '100%';
+
+  timer = setInterval(() => {
+    countdown--;
+    document.getElementById('countdown').textContent = countdown;
+    const pct = (countdown / REFRESH_INTERVAL) * 100;
+    document.getElementById('refresh-fill').style.width = pct + '%';
+
+    if (countdown <= 0) {
+      fetchStatus();
+      startRefreshBar();
+    }
+  }, 1000);
+}
+
+// Epoch timer ticks every second
+setInterval(updateEpoch, 1000);
+updateEpoch();
+
+fetchStatus();
+startRefreshBar();
+</script>
+</body>
+</html>
